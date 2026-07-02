@@ -62,6 +62,8 @@ module "voice_connect" {
   count              = var.voice_provider == "connect" ? 1 : 0
   name_prefix        = local.name_prefix
   claim_phone_number = var.claim_phone_number
+  dialog_fn_arn      = module.dialog_engine.function_arn
+  adapter_source_dir = "${local.src_dir}/connect_adapter"
 }
 
 module "voice_twilio" {

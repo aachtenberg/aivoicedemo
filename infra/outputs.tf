@@ -44,3 +44,12 @@ output "connect_source_number" {
   description = "Claimed outbound source number (null until claim_phone_number = true)."
   value       = one(module.voice_connect[*].phone_number)
 }
+
+output "connect_adapter_function_name" {
+  description = "Lex V2 code-hook adapter (Phase B) — build_lex.sh binds the bot to it."
+  value       = one(module.voice_connect[*].adapter_function_name)
+}
+
+output "connect_adapter_function_arn" {
+  value = one(module.voice_connect[*].adapter_function_arn)
+}

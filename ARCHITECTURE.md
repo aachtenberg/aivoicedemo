@@ -116,7 +116,7 @@ trial-account caller-ID verification can take a day+.
 | Days | Phase | Status | Notes on remaining work |
 |---|---|---|---|
 | 1–2 | **Foundations** | ✅ | Scaffold applied + verified. Outstanding: seed data, CI `tofu validate`. |
-| 3–4 | **Voice spike (de-risk first)** | ✅ | Number claimed; **real outbound call via `StartOutboundVoiceContact` → contact flow → Polly** confirmed (`scripts/place_call.sh`). Outbound quota did **not** block. Remaining: the **interactive** turn loop (Lex code-hook → dialog), which is Phase B. |
+| 3–4 | **Voice spike + Phase B brain loop** | ✅ | Outbound spike proven (`place_call.sh`). **Interactive loop proven** too: Lex V2 (speech pipe) → `connect_adapter` code-hook → dialog engine, verified via `recognize-text` (`build_lex.sh`) — continue vs. terminal-close mapping works. **Last mile (needs a live call):** interactive contact flow (GetCustomerInput → Lex, loop on ElicitIntent, branch on `finalAction`) + Connect↔Lex association. |
 | 5–6 | **Bedrock dialog engine (safe by construction)** | ✅ | Live: Converse + least-privilege projection + forced tool schema + guardrail + `validate()`. All 7 actions exercised. |
 | 7 | **Config plane** | 🟡 | AppConfig + JSON-schema validator **deployed**. Outstanding: extension layer + runtime read wired into the Lambda. |
 | 8 | **Orchestration + telemetry** | 🟡 | SFN job + EventBridge rule + intake **live & verified**; EMF metrics + X-Ray + dashboard live. Outstanding: task-token callback, DynamoDB outcome writes, `CallCompleted` events. |
