@@ -108,19 +108,18 @@ so swapping is a config flip + adapter deploy, not a rewrite.
 number / verify Twilio caller IDs. This is the #1 schedule risk; outbound numbers and
 trial-account caller-ID verification can take a day+.
 
-> **Progress — as of 2026-07-01:** scaffold is **applied to AWS** (acct ``,
-> us-east-1, 36 resources) and the **ingress → EventBridge → Step Functions → dialog
-> pipeline is verified end-to-end** (`POST /orders/{id}/ready` → execution `SUCCEEDED`).
-> Guardrail + AppConfig + fully-owned IAM are live. Dialog output is still a stub — the
-> Bedrock Converse call is the current task (Day 5–6). Legend: ✅ done · 🟡 partial · ⬜ next.
+> **Progress — as of 2026-07-01:** scaffold is **applied to AWS** (us-east-1) and verified end-to-end. **Dialog engine is live on Bedrock** (real Claude
+> reasoning across all 7 actions, guardrail enforcing, EMF + X-Ray + dashboard).
+> **Voice spike proven** — a real outbound Connect call played the Polly pickup message.
+> Legend: ✅ done · 🟡 partial · ⬜ next.
 
 | Days | Phase | Status | Notes on remaining work |
 |---|---|---|---|
 | 1–2 | **Foundations** | ✅ | Scaffold applied + verified. Outstanding: seed data, CI `tofu validate`. |
-| 3–4 | **Voice spike (de-risk first)** | ⬜ | Blocked on a claimed number (`claim_phone_number=true`). `StartOutboundVoiceContact` → contact flow → Polly. |
-| 5–6 | **Bedrock dialog engine (safe by construction)** | 🟡 | Guardrail live; `validate()` + forced tool schema + projection **in code**. **Converse call = current task.** |
+| 3–4 | **Voice spike (de-risk first)** | ✅ | Number claimed; **real outbound call via `StartOutboundVoiceContact` → contact flow → Polly** confirmed (`scripts/place_call.sh`). Outbound quota did **not** block. Remaining: the **interactive** turn loop (Lex code-hook → dialog), which is Phase B. |
+| 5–6 | **Bedrock dialog engine (safe by construction)** | ✅ | Live: Converse + least-privilege projection + forced tool schema + guardrail + `validate()`. All 7 actions exercised. |
 | 7 | **Config plane** | 🟡 | AppConfig + JSON-schema validator **deployed**. Outstanding: extension layer + runtime read wired into the Lambda. |
-| 8 | **Orchestration + telemetry** | 🟡 | SFN job + EventBridge rule + intake **live & verified**. Outstanding: task-token callback, DynamoDB outcome writes, `CallCompleted` events, CloudWatch funnel. |
+| 8 | **Orchestration + telemetry** | 🟡 | SFN job + EventBridge rule + intake **live & verified**; EMF metrics + X-Ray + dashboard live. Outstanding: task-token callback, DynamoDB outcome writes, `CallCompleted` events. |
 | 9 | **Provider swap + AgentCore showcase (stretch)** | ⬜ | Flip to Twilio, re-prove abstraction. Optional AgentCore Memory (§11). |
 | 10 | **Polish + buffer** | ⬜ | Demo script (§9 adversarial beat + §10 hot-config tweak), runbook, cost notes. |
 

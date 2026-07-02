@@ -43,3 +43,9 @@ output "instance_arn" {
 output "contact_flow_id" {
   value = aws_connect_contact_flow.notify.contact_flow_id
 }
+
+# The claimed source number (E.164) used as SourcePhoneNumber for outbound calls.
+# null until claim_phone_number = true (Day-0 provisioning; ~$1/mo).
+output "phone_number" {
+  value = var.claim_phone_number ? aws_connect_phone_number.did[0].phone_number : null
+}

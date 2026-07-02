@@ -28,7 +28,7 @@ variable "voice_provider" {
 variable "claim_phone_number" {
   description = "Claim a Connect DID (costs money; Day-0 provisioning). Off by default."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "bedrock_model_id" {

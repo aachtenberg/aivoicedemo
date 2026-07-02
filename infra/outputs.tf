@@ -30,3 +30,17 @@ output "active_voice_provider" {
 output "dashboard_url" {
   value = "https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards/dashboard/${module.dashboard.dashboard_name}"
 }
+
+# Connect outbound spike (§ voice spike). null when voice_provider != "connect".
+output "connect_instance_id" {
+  value = one(module.voice_connect[*].instance_id)
+}
+
+output "connect_contact_flow_id" {
+  value = one(module.voice_connect[*].contact_flow_id)
+}
+
+output "connect_source_number" {
+  description = "Claimed outbound source number (null until claim_phone_number = true)."
+  value       = one(module.voice_connect[*].phone_number)
+}
