@@ -1,0 +1,29 @@
+# OpenTofu / Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
+
+# Saved plan artifacts (binary; can embed resource values)
+tfplan
+*.tfplan
+plan.out
+
+# Build artifacts (lambda zips produced by archive_file)
+**/.build/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local tooling
+.claude/

@@ -1,0 +1,18 @@
+# Copy to terraform.tfvars and adjust. All have sensible defaults.
+
+aws_region     = "us-east-1"
+project        = "aivoicedemo"
+environment    = "demo"
+
+# Swap the voice provider here (§1). "connect" | "twilio" | "sns".
+voice_provider = "connect"
+
+# Leave false until Day-0 telephony provisioning; claiming a DID costs money.
+claim_phone_number = false
+
+# Confirm the exact profile ID with:
+#   aws bedrock list-inference-profiles --region us-east-1
+# Haiku 4.5 exposes only the dated profile (no bare alias).
+bedrock_model_id = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+max_call_attempts = 3

@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["model_id", "max_turns", "system_prompt", "copy"],
+  "additionalProperties": false,
+  "properties": {
+    "model_id": { "type": "string", "minLength": 1 },
+    "max_turns": { "type": "integer", "minimum": 1, "maximum": 20 },
+    "system_prompt": { "type": "string", "minLength": 1 },
+    "copy": {
+      "type": "object",
+      "required": ["opener", "deflect", "confirm"],
+      "additionalProperties": false,
+      "properties": {
+        "opener": { "type": "string", "minLength": 1 },
+        "deflect": { "type": "string", "minLength": 1 },
+        "confirm": { "type": "string", "minLength": 1 }
+      }
+    },
+    "guardrail_version": { "type": "string" }
+  }
+}

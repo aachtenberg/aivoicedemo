@@ -1,0 +1,28 @@
+{
+  "Version": "2019-10-30",
+  "StartAction": "play-ready",
+  "Metadata": {
+    "entryPointPosition": { "x": 20, "y": 20 },
+    "ActionMetadata": {}
+  },
+  "Actions": [
+    {
+      "Identifier": "play-ready",
+      "Type": "MessageParticipant",
+      "Parameters": {
+        "Text": "Your repair is ready for pickup."
+      },
+      "Transitions": {
+        "NextAction": "disconnect",
+        "Errors": [],
+        "Conditions": []
+      }
+    },
+    {
+      "Identifier": "disconnect",
+      "Type": "DisconnectParticipant",
+      "Parameters": {},
+      "Transitions": {}
+    }
+  ]
+}

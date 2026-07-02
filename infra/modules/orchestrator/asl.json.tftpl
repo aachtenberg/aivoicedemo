@@ -1,0 +1,50 @@
+{
+  "Comment": "Notification call job (§8). Place call -> evaluate disposition -> retry/backoff or done.",
+  "StartAt": "PlaceCall",
+  "States": {
+    "PlaceCall": {
+      "Type": "Task",
+      "Resource": "${dialog_fn_arn}",
+      "Comment": "Stub: invokes DialogTurn. Real build swaps in the VoiceProvider place-call task with a task-token callback resolved by the provider webhook.",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Next": "EvaluateOutcome"
+    },
+    "EvaluateOutcome": {
+      "Type": "Choice",
+      "Comment": "Retry only on a retryable call disposition. IsPresent guards keep it safe when a stub omits the field.",
+      "Choices": [
+        {
+          "And": [
+            { "Variable": "$.disposition", "IsPresent": true },
+            { "Variable": "$.disposition", "StringEquals": "NO_ANSWER" }
+          ],
+          "Next": "WaitBackoff"
+        },
+        {
+          "And": [
+            { "Variable": "$.disposition", "IsPresent": true },
+            { "Variable": "$.disposition", "StringEquals": "BUSY" }
+          ],
+          "Next": "WaitBackoff"
+        }
+      ],
+      "Default": "Done"
+    },
+    "WaitBackoff": {
+      "Type": "Wait",
+      "Seconds": 30,
+      "Comment": "Quiet-hours-aware backoff; capped at max_attempts in the real build.",
+      "Next": "PlaceCall"
+    },
+    "Done": {
+      "Type": "Succeed"
+    }
+  }
+}
