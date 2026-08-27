@@ -13,7 +13,7 @@ request/data flow; dotted = async events, config reads, and telemetry.
 
 ```mermaid
 flowchart TB
-  OP["Operator / repair system"]
+  OP["Operator / route simulator"]
 
   subgraph ingress["Ingress"]
     APIGW["API Gateway HTTP"]
@@ -44,9 +44,9 @@ flowchart TB
     CW["CloudWatch dashboard"]
   end
 
-  OP -->|POST order ready| APIGW --> INTAKE
-  INTAKE -.->|RepairOrderCompleted| EB
-  EB -.->|rule order-ready| SFN
+  OP -->|POST route disrupted| APIGW --> INTAKE
+  INTAKE -.->|RouteDisrupted| EB
+  EB -.->|rule route-disrupted| SFN
   SFN -->|PlaceCall task| DLG
   DLG --> BR
   BR -. guardrail in and out .-> GR
@@ -89,8 +89,9 @@ stateDiagram-v2
   RINGING --> VOICEMAIL
   ANSWERED --> IN_DIALOG
 
-  IN_DIALOG --> CONFIRMED
-  IN_DIALOG --> RESCHEDULE
+  IN_DIALOG --> ACCEPTED
+  IN_DIALOG --> KEEP_OLD
+  IN_DIALOG --> SKIP_STOP
   IN_DIALOG --> DO_NOT_CALL
   IN_DIALOG --> TRANSFER: to human
 
@@ -103,15 +104,16 @@ stateDiagram-v2
   retry --> EXHAUSTED: max attempts hit
   WAIT_BACKOFF --> DIALING: quiet-hours aware
 
-  CONFIRMED --> [*]
-  RESCHEDULE --> [*]
+  ACCEPTED --> [*]
+  KEEP_OLD --> [*]
+  SKIP_STOP --> [*]
   DO_NOT_CALL --> [*]
   TRANSFER --> [*]
   EXHAUSTED --> [*]
 ```
 
 > Idempotency: the Step Functions execution name is the `jobId`, so a duplicate
-> `RepairOrderCompleted` can't start a second call for the same order (§8).
+> `RouteDisrupted` can't start a second call for the same route (§8).
 
 ---
 

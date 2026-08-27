@@ -1,7 +1,18 @@
-# AI Voice Call Demo
+# Waze Voice Demo
 
-An event-driven AI agent that detects a completed jewelry/watch repair order and
-places an automated outbound call to tell the customer it's ready for pickup.
+An event-driven AI agent that detects a disrupted multi-stop route, re-orders the
+remaining stops, and places an automated outbound call so the driver can confirm the
+new order **without looking at a screen**.
+
+**Use case:** mid-trip re-route confirmation. Computing a new stop order is easy;
+consuming it while driving is not. Waze Voice reads the proposed order, captures
+accept / keep-old / skip-a-stop, and hands turn-by-turn to a public [Waze Deep
+Link](https://developers.google.com/waze/deeplinks). We are **not** a Waze routing
+API — there isn't a public one. The optimizer result is an input; voice confirms it.
+
+**Tracked in Plane:** workspace `demos`, project
+[WazeVoiceDemo](http://plane.xgrunt.com/demos/projects/5e523cdf-87e0-47e5-97d5-97d386e40d83/)
+(WAZEVOICED-1…8).
 
 **Design & rationale:** [ARCHITECTURE.md](ARCHITECTURE.md) — read this first. It covers the
 swappable telephony (§1), where the LLM earns its keep vs. plain IVR (§6–7), telemetry &
@@ -56,21 +67,22 @@ tofu plan
 #   voice_provider = "twilio"   in terraform.tfvars, then tofu apply
 
 # Trigger the demo (after apply):
-#   curl -X POST "$(tofu output -raw intake_url | sed 's/{orderId}/1234/')"
+#   curl -X POST "$(tofu output -raw intake_url | sed 's/{routeId}/1042/')"
 ```
 
 ## Tests
 
 ```bash
-python -m pytest src/dialog_engine/test_handler.py
+python -m pytest src/dialog_engine/test_handler.py src/connect_adapter/test_handler.py
 ```
 
 ## Status
 
-Scaffold — `tofu validate` clean; Lambda handlers are stubs with the security controls
-(`validate()`, least-privilege projection, forced tool schema) already in place. The
-Bedrock Converse wiring, Connect contact flow, and Step Functions task-token callback are
-the TODOs marked in the source, on the Day-by-day plan in ARCHITECTURE.md §4.
+Scaffold retargeted from the jewelry-pickup persona to Waze Voice re-route confirmation.
+`tofu validate` was clean on the original stack; Lambda handlers keep the security
+controls (`validate()`, least-privilege projection, forced tool schema). The Bedrock
+Converse wiring, Connect contact flow, and Step Functions task-token callback remain
+the TODOs marked in the source.
 
 > The Connect contact-flow JSON and the Step Functions ASL are minimal placeholders —
 > intentionally, so the graph/flow is real but the behavior is filled in during the

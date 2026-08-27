@@ -1,4 +1,4 @@
-# Custom EventBridge bus — RepairOrderCompleted in, Call* events out (§8).
+# Custom EventBridge bus — RouteDisrupted in, Call* events out (§8).
 
 variable "name_prefix" {
   type = string

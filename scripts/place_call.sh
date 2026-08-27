@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Voice spike — place one real outbound call via Amazon Connect.
 #   Source (claimed) number + contact flow -> StartOutboundVoiceContact -> the flow plays
-#   a Polly "your item is ready" message to the destination.
+#   a Polly "crash on Lincoln, I reordered your stops" message to the destination.
 #
 # Prereqs: claim_phone_number = true and `tofu apply` (claims a ~$1/mo DID).
 # Usage:   ./scripts/place_call.sh +15551234567     # destination you control, E.164
@@ -33,4 +33,4 @@ aws connect start-outbound-voice-contact \
   --contact-flow-id "$FLOW" \
   --destination-phone-number "$DEST" \
   --source-phone-number "$SRC"
-echo "Requested. The destination should ring shortly and hear the pickup message."
+echo "Requested. The destination should ring shortly and hear the re-route opener."

@@ -7,7 +7,7 @@ variable "name_prefix" {
 
 resource "aws_bedrock_guardrail" "dialog" {
   name                      = "${var.name_prefix}-dialog"
-  blocked_input_messaging   = "I can only help with your repair pickup."
+  blocked_input_messaging   = "I can only help with this re-route."
   blocked_outputs_messaging = "I'm not able to help with that on this call."
 
   # PII the agent must never emit, even if one leaked into context (backstop to §9 #1).
@@ -26,16 +26,22 @@ resource "aws_bedrock_guardrail" "dialog" {
     }
   }
 
-  # Guardrails enforce the HARD risks (payments/PII/injection). Topic-scoping nuance —
-  # "stay on pickup, but handle who-picks-it-up naturally" — is the model + system
-  # prompt's job (§9 layering). A broad "OffTopic" DENY topic false-positives on in-scope
-  # speech like "can my daughter pick it up?", so it's intentionally NOT used here.
+  # Guardrails enforce the HARD risks (payments/PII/saved-places/injection). Topic-scoping
+  # nuance — "stay on this re-route, but handle skip-a-stop naturally" — is the model +
+  # system prompt's job (§9 layering). A broad "OffTopic" DENY topic false-positives on
+  # in-scope speech like "skip the pharmacy", so it's intentionally NOT used here.
   topic_policy_config {
     topics_config {
       name       = "Payments"
       type       = "DENY"
       definition = "Any discussion of card numbers, billing, balances, or taking payment."
       examples   = ["what's the card on file", "can I pay now", "what do I owe"]
+    }
+    topics_config {
+      name       = "SavedPlaces"
+      type       = "DENY"
+      definition = "Requests for a home, work, or school street address, coordinates, or other saved-place details that would not belong on a voicemail."
+      examples   = ["what's my home address", "where does my kid go to school", "read me the coordinates for home"]
     }
   }
 

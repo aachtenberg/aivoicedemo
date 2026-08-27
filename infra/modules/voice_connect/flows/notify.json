@@ -10,7 +10,7 @@
       "Identifier": "play-ready",
       "Type": "MessageParticipant",
       "Parameters": {
-        "Text": "Hello, this is a call from the repair shop. Good news — your item is ready for pickup during our normal business hours. Thank you, and goodbye."
+        "Text": "Hi Sam, this is Waze. A crash closed Lincoln Avenue. I reordered your remaining stops — school pickup first, then the pharmacy. Press 1 to take it, or stay on the line."
       },
       "Transitions": {
         "NextAction": "disconnect",
