@@ -11,6 +11,21 @@ hard to consume while driving. Voice confirms the new order; a public [Waze Deep
 Link](https://developers.google.com/waze/deeplinks) is last-mile turn-by-turn for the next
 stop. There is **no public Waze routing/VRP API** — we do not pretend otherwise.
 
+**Sister demo — Maps Voice (separate Plane project, do not fold in):** Google Maps
+Platform is a better *sensor* for a known A→B commute. Poll (or later subscribe)
+[Routes API](https://developers.google.com/maps/documentation/routes) `computeRoutes` with
+`TRAFFIC_AWARE` / `TRAFFIC_AWARE_OPTIMAL`, compare `duration` to `staticDuration`, and
+optionally read `travelAdvisory.speedReadingIntervals` (`NORMAL` / `SLOW` / `TRAFFIC_JAM`).
+That jam interval is the closest Google “incident” signal — a speed category, **not** a
+typed crash/construction event. Google does not ship a consumer Incidents API. When live
+ETA blows past baseline and an alternate saves enough minutes, the same DialogTurn stack
+calls the driver; last mile is a
+[Maps URL](https://developers.google.com/maps/documentation/urls/get-started)
+(`dir/?api=1&dir_action=navigate`), not Waze. Tracked as
+[MapsVoiceDemo](http://plane.xgrunt.com/demos/projects/083fac0e-ae9b-4c0c-83c6-2bc41073f56f/).
+Roads Management Insights (Pub/Sub every ~2 min on selected routes) is a stretch push
+trigger, not v1.
+
 > 📊 **Rendered diagrams** (architecture, call-lifecycle state machine, live-call
 > sequence) are in [DIAGRAMS.md](DIAGRAMS.md). The ASCII diagrams inline below are the
 > plain-text equivalents.

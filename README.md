@@ -12,7 +12,14 @@ API — there isn't a public one. The optimizer result is an input; voice confir
 
 **Tracked in Plane:** workspace `demos`, project
 [WazeVoiceDemo](http://plane.xgrunt.com/demos/projects/5e523cdf-87e0-47e5-97d5-97d386e40d83/)
-(WAZEVOICED-1…8).
+(WAZEVOICED-1…9).
+
+**Sister demo (do not merge):** [MapsVoiceDemo](http://plane.xgrunt.com/demos/projects/083fac0e-ae9b-4c0c-83c6-2bc41073f56f/)
+uses Google Maps Platform **Routes API** traffic (`duration` vs `staticDuration`,
+`speedReadingIntervals`) to call you when a *saved A→B commute* blows up. There is no
+public Google “Incidents API” that returns typed crash/construction events — that
+backlog is honest about it. Last mile is a Google Maps URL, not a Waze Deep Link. Same
+`aivoicedemo` voice stack, different sensor and different mouth.
 
 **Design & rationale:** [ARCHITECTURE.md](ARCHITECTURE.md) — read this first. It covers the
 swappable telephony (§1), where the LLM earns its keep vs. plain IVR (§6–7), telemetry &
