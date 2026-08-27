@@ -1,9 +1,30 @@
-# AI Voice Call Demo — Architecture & 2-Week Plan
+# Waze Voice Demo — Architecture & 2-Week Plan
 
-**Goal:** An event-driven AI agent that detects when a jewelry/watch repair order is
-complete and places an automated outbound voice call to tell the customer their item is
-ready for pickup. Demo-quality, ~2 weeks, AWS Bedrock at the core, with a **swappable
-outbound voice provider** (Amazon Connect default; Twilio / SNS interchangeable).
+**Goal:** An event-driven AI agent that detects when a planned sequence of stops is
+blown up (crash, closure) and places an automated outbound voice call so the driver can
+confirm a **re-optimized remaining-stop order** without looking at a screen. Demo-quality,
+AWS Bedrock at the core, with a **swappable outbound voice provider** (Amazon Connect
+default; Twilio / SNS interchangeable).
+
+The useful thing is not the optimizer. Re-ordering remaining stops is easy to compute and
+hard to consume while driving. Voice confirms the new order; a public [Waze Deep
+Link](https://developers.google.com/waze/deeplinks) is last-mile turn-by-turn for the next
+stop. There is **no public Waze routing/VRP API** — we do not pretend otherwise.
+
+**Sister demo — Maps Voice (separate Plane project, do not fold in):** Google Maps
+Platform is a better *sensor* for a known A→B commute. Poll (or later subscribe)
+[Routes API](https://developers.google.com/maps/documentation/routes) `computeRoutes` with
+`TRAFFIC_AWARE` / `TRAFFIC_AWARE_OPTIMAL`, compare `duration` to `staticDuration`, and
+optionally read `travelAdvisory.speedReadingIntervals` (`NORMAL` / `SLOW` / `TRAFFIC_JAM`).
+That jam interval is the closest Google “incident” signal — a speed category, **not** a
+typed crash/construction event. Google does not ship a consumer Incidents API. When live
+ETA blows past baseline and an alternate saves enough minutes, the same DialogTurn stack
+calls the driver; last mile is a
+[Maps URL](https://developers.google.com/maps/documentation/urls/get-started)
+(`dir/?api=1&dir_action=navigate`), not Waze. Tracked as
+[MapsVoiceDemo](http://plane.xgrunt.com/demos/projects/083fac0e-ae9b-4c0c-83c6-2bc41073f56f/).
+Roads Management Insights (Pub/Sub every ~2 min on selected routes) is a stretch push
+trigger, not v1.
 
 > 📊 **Rendered diagrams** (architecture, call-lifecycle state machine, live-call
 > sequence) are in [DIAGRAMS.md](DIAGRAMS.md). The ASCII diagrams inline below are the
@@ -36,7 +57,7 @@ its native webhook/API format to/from those contracts.
 ```
 placeCall(CallRequest) -> CallHandle
   CallRequest  = { callId, toNumber, fromNumber, locale,
-                   dialogConfig, context }   # context = order + customer data
+                   dialogConfig, context }   # context = route + canned optimizer result
   CallHandle   = { providerCallId, status }
 getStatus(callId) -> { status, lastEvent }
 # Outcome is emitted asynchronously as a CallCompleted event (answered / voicemail /
@@ -61,15 +82,15 @@ so swapping is a config flip + adapter deploy, not a rewrite.
 ## 2. End-to-end flow
 
 ```
-[Repair shop system / simulator]
-        │  "order ready for pickup"
+[Route simulator]
+        │  "incident blew up remaining stops"
         ▼
-  API Gateway  ──▶  EventBridge  (RepairOrderCompleted)
+  API Gateway  ──▶  EventBridge  (RouteDisrupted)
                         │
                         ▼
                  Call Orchestrator (Lambda)
-                   • loads order + customer from DynamoDB
-                   • Bedrock Agent decides: call now? compose message? quiet hours?
+                   • loads route + canned optimizer result from DynamoDB
+                   • Bedrock Agent decides: call now? quiet hours?
                    • builds CallRequest, calls VoiceProvider.placeCall()
                         │
                         ▼
@@ -85,8 +106,8 @@ so swapping is a config flip + adapter deploy, not a rewrite.
 
 | Concern | Service | Notes |
 |---|---|---|
-| Event bus | **EventBridge** | `RepairOrderCompleted` (in) + `CallCompleted`/`RetryScheduled`/`DoNotCall` (out) |
-| Ingress / simulator | **API Gateway + Lambda** | webhook + a tiny "mark order ready" admin trigger for the demo |
+| Event bus | **EventBridge** | `RouteDisrupted` (in) + `CallCompleted`/`RetryScheduled`/`DoNotCall` (out) |
+| Ingress / simulator | **API Gateway + Lambda** | webhook + a tiny "mark route disrupted" admin trigger for the demo |
 | Call orchestration | **Step Functions** | one execution per notification job = state machine + retries + waits + telemetry (§8); Lambdas are task workers |
 | AI reasoning / dialog | **Bedrock** (Claude via Converse) | `DialogTurn`: message composition + live dialog turns; boto3 Converse, forced tool schema (§9). AgentCore is a graduation path, not v1 (§11) |
 | Safety | **Bedrock Guardrails** | denied topics + PII block + prompt-attack + grounding, on input & output (§9) |
@@ -110,8 +131,9 @@ trial-account caller-ID verification can take a day+.
 
 > **Progress — as of 2026-07-01:** scaffold is **applied to AWS** (us-east-1) and verified end-to-end. **Dialog engine is live on Bedrock** (real Claude
 > reasoning across all 7 actions, guardrail enforcing, EMF + X-Ray + dashboard).
-> **Voice spike proven** — a real outbound Connect call played the Polly pickup message.
-> Legend: ✅ done · 🟡 partial · ⬜ next.
+> **Voice spike proven** (jewelry persona) — a real outbound Connect call played a Polly
+> message. This branch retargets copy, actions, and ingress to Waze Voice re-route
+> confirmation (Plane `demos` / WazeVoiceDemo). Same stack.
 
 | Days | Phase | Status | Notes on remaining work |
 |---|---|---|---|
@@ -145,24 +167,24 @@ trial-account caller-ID verification can take a day+.
 ## 6. Why an LLM — and where it's just IVR
 
 Be honest about this up front, because a sharp reviewer will ask: **the happy path does
-not need an LLM.** "Your watch is ready, press 1 to confirm" is a solved problem — a
-Connect contact flow + Polly TTS + DTMF/Lex capture does it deterministically, and does
-it *better* than an LLM: lower latency, near-zero cost, fully predictable, no
+not need an LLM.** "Crash on Lincoln, press 1 to take the new stop order" is a solved
+problem — a Connect contact flow + Polly TTS + DTMF/Lex capture does it deterministically,
+and does it *better* than an LLM: lower latency, near-zero cost, fully predictable, no
 hallucination, easy to certify for compliance.
 
 The LLM's value is **variance absorption, not task execution.** The task is trivial; the
-*variance in how a human responds on a phone* is the hard part — and that's exactly what
-rules handle badly and an LLM handles well.
+*variance in how a human responds on a phone while driving* is the hard part — and that's
+exactly what rules handle badly and an LLM handles well.
 
 | Capability | Rules / IVR | LLM (Bedrock) | Verdict |
 |---|---|---|---|
-| Fixed "item ready" notification | ✅ perfect | ✅ but overkill | **Use IVR** |
-| Menu confirm (press 1) | ✅ perfect | — | **Use IVR** |
-| Off-script speech ("can my daughter pick it up?", "I'm driving") | ❌ falls off a cliff | ✅ stays on-task | **LLM** |
-| Free-text repair notes → natural spoken sentence | ❌ combinatorial templating | ✅ | **LLM** |
+| Fixed "new stop order" notification | ✅ perfect | ✅ but overkill | **Use IVR** |
+| Menu confirm (press 1 to accept) | ✅ perfect | — | **Use IVR** |
+| Off-script speech ("skip the pharmacy, they're out of stock") | ❌ falls off a cliff | ✅ stays on-task | **LLM** |
+| "I'm already at the school" → treat as arrived, next stop changes | ❌ combinatorial | ✅ | **LLM** |
 | "Take me off your list" from open speech → do-not-call | ❌ only if it's a menu item | ✅ | **LLM (compliance)** |
-| Structured outcome capture (confirmed / reschedule / sentiment) | ⚠️ brittle | ✅ | **LLM** |
-| Future: two-way scheduling, "what do I owe?", multilingual | ❌ rebuild each time | ✅ same architecture | **LLM (platform bet)** |
+| Structured outcome (accepted / keep-old / skipped / DNC) | ⚠️ brittle | ✅ | **LLM** |
+| Future: inbound add-a-stop, two-way time windows | ❌ rebuild each time | ✅ same architecture | **LLM (platform bet)** |
 
 **Rule of thumb:** deterministic parts stay deterministic (dial, play the opener,
 capture a DTMF press). The LLM is invoked only when the caller says something the flow
@@ -175,28 +197,37 @@ didn't anticipate. This keeps latency and cost down *and* makes the LLM's role l
 The demo must **deliberately show moments a contact flow could not handle.** Structure it
 as a deterministic beat, then an LLM beat, so the contrast is visible:
 
-1. **[Trigger]** Operator marks repair order #1234 "ready for pickup" in the simulator.
-2. **[Deterministic — cheap & reliable]** Phone rings within seconds. Agent plays the
-   opener: *"Hi, this is [Shop] — your watch repair is ready for pickup."* → *"Press 1
-   to confirm, or stay on the line."* Narrate to the client: *this part is pure IVR, no
-   LLM — fast and free.*
-3. **[LLM beat #1 — off-script speech]** Instead of pressing 1, the caller says
-   *"Actually, can my daughter pick it up instead?"* The agent handles it naturally,
-   confirms who's authorized, and stays on task. **This is the moment that justifies
-   Bedrock** — a menu can't do it.
-4. **[LLM beat #2 — dynamic composition]** Run a second order whose repair note is messy
-   free text (*"resized +1, replaced clasp, new battery"*). The agent speaks a natural
-   summary instead of reading raw fields — impossible to template cleanly.
-5. **[LLM beat #3 — compliance from open speech]** A third caller says *"stop calling
-   me."* The agent recognizes intent (not a menu press), confirms, and flags the record
-   do-not-call. Shows the LLM earning its keep on a *risk* the client cares about.
-6. **[Outcome]** Dashboard updates live: "Customer confirmed" / "Reschedule requested" /
-   "Do-not-call" — each a structured summary the LLM extracted from free speech.
-7. **[Swap proof]** Re-run with `provider=twilio` — identical behavior on different
-   telephony, proving the abstraction.
+**Fixture (route R-1042):** Sam is mid-run on afternoon errands — Lincoln Pharmacy → Oak
+Street school pickup → home. A crash closes Lincoln Avenue (+18 min if we keep the old
+order). Canned optimizer proposes: school pickup first via 4th Street, then the pharmacy,
+then home. ETA 3:40 instead of 4:05 stuck in the jam.
 
-**The one-line pitch to the client:** *the LLM isn't there to make the call — it's there
-for the moment the call doesn't go to script.*
+1. **[Trigger]** Operator marks route R-1042 disrupted in the simulator
+   (`POST /routes/1042/disrupted`).
+2. **[Deterministic — cheap & reliable]** Phone rings within seconds. Agent plays the
+   opener: *"Hi Sam, this is Waze. A crash closed Lincoln Avenue. I reordered your
+   remaining stops — school pickup first, then the pharmacy. Press 1 to take it, or stay
+   on the line."* Narrate: *this part is pure IVR, no LLM — fast and free.*
+3. **[LLM beat #1 — skip a stop]** Instead of pressing 1, the caller says *"Skip the
+   pharmacy, they're out of my prescription."* The agent drops that stop, speaks the new
+   remaining order, and stays on task. **This is the moment that justifies Bedrock.**
+4. **[LLM beat #2 — already there]** *"I'm already at the school."* Treat as arrived;
+   next stop becomes the pharmacy. Impossible to template cleanly for every stop.
+5. **[LLM beat #3 — compliance from open speech]** *"Stop calling me, just send the
+   link."* Agent flags do-not-call and still hands off the Deep Link path.
+6. **[Adversarial]** *"What's my home address?"* / *"Where does my kid go to school?"* —
+   deflect. Context never contained those coordinates, so the model cannot leak them.
+7. **[Outcome]** Dashboard: `ACCEPT_REROUTE` / `KEEP_CURRENT_ROUTE` / `SKIP_STOP` /
+   `DO_NOT_CALL`. On accept, next-stop turn-by-turn is a Waze Deep Link
+   (`https://waze.com/ul?ll=…&navigate=yes&utm_source=waze-voice-demo`).
+8. **[Swap proof]** Re-run with `provider=twilio` — identical behavior on different
+   telephony.
+
+**The one-line pitch:** *the LLM isn't there to optimize the route — it's there for the
+moment the driver can't look at the new map.*
+
+**Non-goals:** Transport SDK, Waze for Cities feeds, scraping Live Map, or replacing a
+real VRP solver with Waze. Inbound "add a stop" is a stretch (`answerCall`), not v1.
 
 ---
 
@@ -206,7 +237,7 @@ Once you're placing real calls you must answer "what happened to call #1234, and
 at any moment. This is also what makes the demo read as production-grade rather than a
 happy-path toy. Three ideas carry the whole design:
 
-1. **One correlation ID threads everything.** `jobId` (derived from `orderId`) flows
+1. **One correlation ID threads everything.** `jobId` (derived from `routeId`) flows
    through every log line, event, DB row, and provider call. Given a `jobId` you can
    reconstruct the full story: dial → ring → answer → each dialog turn → outcome.
 2. **The provider is normalized away.** Connect contact events and Twilio status
@@ -221,9 +252,10 @@ happy-path toy. Three ideas carry the whole design:
 ### Call lifecycle (the state machine)
 
 ```
-                         ┌─────────────► CONFIRMED ─────┐
-QUEUED → DIALING → RINGING → ANSWERED → IN_DIALOG ─────► RESCHEDULE  ─┤ (terminal)
-   │                  │         │                 └────► DO_NOT_CALL ─┘
+                         ┌─────────────► ACCEPTED ──────┐
+QUEUED → DIALING → RINGING → ANSWERED → IN_DIALOG ─────► KEEP_OLD  ─┤ (terminal)
+   │                  │         │                 ├────► SKIP_STOP ─┤
+   │                  │         │                 └────► DO_NOT_CALL┘
    │                  │         └► VOICEMAIL ─┐
    │                  └► NO_ANSWER / BUSY ────┼──► retryable?
    └► FAILED (provider/network) ──────────────┘        │
@@ -233,8 +265,8 @@ QUEUED → DIALING → RINGING → ANSWERED → IN_DIALOG ─────► RES
                                    WAIT_BACKOFF → (re-DIAL)    EXHAUSTED (terminal)
 ```
 
-- **Terminal, no retry:** `CONFIRMED`, `RESCHEDULE`, `DO_NOT_CALL`, `INVALID_NUMBER`,
-  `EXHAUSTED`.
+- **Terminal, no retry:** `ACCEPTED`, `KEEP_OLD`, `SKIP_STOP` (when it ends the call),
+  `DO_NOT_CALL`, `INVALID_NUMBER`, `EXHAUSTED`.
 - **Retryable:** `NO_ANSWER`, `BUSY`, transient `FAILED`. Backoff + quiet-hours-aware
   next-attempt time, capped at `maxAttempts` (SSM-configurable, e.g. 3).
 - The provider callback resolves the Step Functions **task token** when a call reaches a
@@ -245,7 +277,7 @@ QUEUED → DIALING → RINGING → ANSWERED → IN_DIALOG ─────► RES
 
 | Item | Key | Holds |
 |---|---|---|
-| **Job** (1 per order) | `PK=job#<jobId>` | `orderId`, `customerId`, `status`, `attemptCount`, `maxAttempts`, `nextRetryAt`, `finalOutcome`, `provider`, timestamps |
+| **Job** (1 per route) | `PK=job#<jobId>` | `routeId`, `driverId`, `status`, `attemptCount`, `maxAttempts`, `nextRetryAt`, `finalOutcome`, `provider`, timestamps |
 | **Attempt** (1 per dial) | `PK=job#<jobId>` `SK=attempt#<n>` | `providerCallId`, `status`, `disposition`, `durationSec`, `errorCode`, `recordingS3Key`, `transcriptS3Key`, started/ended |
 | **CallEvent** (append log) | `SK=evt#<ts>` | normalized `type` (DIALING/RINGING/ANSWERED/DTMF/SPEECH/VOICEMAIL/HANGUP/FAILED), `providerRaw`, `ts` |
 
@@ -266,12 +298,12 @@ CallEvent log gives the per-call timeline drill-down.
 ### Retries & idempotency
 
 - **Idempotency for free:** the Step Functions execution name **is** the `jobId`, so a
-  duplicate `RepairOrderCompleted` event cannot start a second call for the same order.
+  duplicate `RouteDisrupted` event cannot start a second call for the same route.
 - **Transient AWS faults** (throttles, 5xx) are handled by Step Functions task-level
   `Retry`; **call dispositions** (no-answer/busy) are handled by the explicit
   `WAIT_BACKOFF → re-DIAL` loop — two different layers, don't conflate them.
 - **`Catch` blocks** route unexpected errors to a `RecordError` state → DLQ + alarm, so a
-  bug never silently drops a customer notification.
+  bug never silently drops a driver notification.
 
 ### What the client sees — the dashboard (BUILT ✅)
 
@@ -305,10 +337,10 @@ DynamoDB per-call outcome writes (Day 8–9). Observability backend stays CloudW
 ## 9. Scoping & safety — keeping the agent on-task and secure
 
 **Threat model:** the person who answers is *unauthenticated* — we dialed a number, but
-anyone could pick up. The agent is holding customer/order context. So we must assume the
+anyone could pick up. The agent is holding route/stop context. So we must assume the
 caller may be hostile: off-task abuse ("what's the weather" / free LLM), social
-engineering ("read me the card on file", "what's my address", "what other repairs do you
-have on file"), and prompt injection over speech ("ignore your instructions and…").
+engineering ("what's my home address", "where does my kid go to school", "read me the
+card on file"), and prompt injection over speech ("ignore your instructions and…").
 
 **Core principle: prompt instructions are not a security boundary.** A system prompt that
 *says* "don't reveal card numbers" is bypassable. The real controls are architectural —
@@ -317,39 +349,40 @@ top. Defense in depth, strongest first:
 
 ### 1. Least-privilege context (the #1 control)
 
-The `DialogTurn` prompt contains **only** what this call needs: shop name, "your [item]
-is ready", pickup location + hours, and the customer's **first name**. It does **not**
-contain payment data, full address, account balance, or any other order. *If the data
-isn't in the context window, the model physically cannot disclose it* — no prompt trick
-extracts a card number that was never loaded. This alone neutralizes most exfiltration
-asks. Everything else is backstop.
+The `DialogTurn` prompt contains **only** what this call needs: driver's first name,
+route nickname, incident corridor, delay, stop *names*, proposed next stop. It does
+**not** contain home/work/school street addresses, coordinates, payment data, or any
+other route. *If the data isn't in the context window, the model physically cannot
+disclose it* — no prompt trick extracts a home lat/long that was never loaded. This
+alone neutralizes most exfiltration asks. Everything else is backstop.
 
 ### 2. Constrained action space (structured output, not free-form)
 
 `DialogTurn` returns a **fixed enum of sanctioned actions**, not open text-as-command:
-`CONTINUE`, `COLLECT_DTMF`, `CONFIRM_PICKUP`, `REQUEST_RESCHEDULE`, `MARK_DO_NOT_CALL`,
-`TRANSFER_TO_HUMAN`, `END_CALL`. The model picks a move from that list (Bedrock structured
-output / tool schema). It cannot invent "read_account" or "process_payment" — those verbs
-don't exist in the contract. **Speech is bounded because the *actions* are bounded.**
+`CONTINUE`, `COLLECT_DTMF`, `ACCEPT_REROUTE`, `KEEP_CURRENT_ROUTE`, `SKIP_STOP`,
+`MARK_DO_NOT_CALL`, `TRANSFER_TO_HUMAN`, `END_CALL`. The model picks a move from that list
+(Bedrock structured output / tool schema). It cannot invent "read_saved_places" or
+"process_payment" — those verbs don't exist in the contract. **Speech is bounded because
+the *actions* are bounded.**
 
 ### 3. Unauthenticated-caller disclosure rule
 
 Default posture: **disclose nothing you wouldn't leave on a voicemail.** Anything
-account-specific (payment, full address, other orders) requires either identity
-verification (order # + DOB, or a DTMF PIN) or a `TRANSFER_TO_HUMAN`. For the demo the
-rule is absolute: **the agent never reads back sensitive data** — it confirms readiness
-and captures intent, full stop.
+location-specific beyond the public stop names on this one route (home/work/school
+street address, coordinates, other drivers) requires a `TRANSFER_TO_HUMAN`. For the demo
+the rule is absolute: **the agent never reads back saved-place details** — it confirms
+the new stop order and captures intent, full stop.
 
 ### 4. Amazon Bedrock Guardrails (config-driven enforcement — fits the "Bedrock" brief)
 
 Applied to **both** the caller's transcribed utterance (input) and the model's response
 (output), before TTS:
-- **Denied topics** — payments/billing, other customers, general knowledge/chit-chat,
-  legal/medical → deflect.
+- **Denied topics** — payments/billing, saved-place addresses, general knowledge/chit-chat
+  → deflect.
 - **PII filters** — block the model from ever *emitting* a card number / SSN / full
   address, even if one somehow reached context (backstop to control #1).
 - **Prompt-attack detection** — flags "ignore previous instructions"-style injections.
-- **Grounding/relevance** — response must stay tied to the pickup task.
+- **Grounding/relevance** — response must stay tied to this re-route.
 
 ### 5. Prompt-injection hygiene
 
@@ -362,14 +395,14 @@ hold against — it isn't wired to override anything.
 
 A cheap deterministic pass after the model, before Polly/TTS: PII regex (card/SSN
 patterns) + on-topic check. On failure, discard the response and speak a safe fallback
-line ("I can only help with your repair pickup — let me get a team member") and/or
+line ("I can only help with this re-route — let me get a person") and/or
 `TRANSFER_TO_HUMAN`. Belt-and-suspenders behind Guardrails.
 
 ### 7. Bounded deflection + escalation
 
 When out of scope, the safe move is a **scripted deflection**, not improvisation:
-*"I can only help with your repair pickup. For anything else, please call the shop at
-[number]."* Repeated off-topic or a detected attack → `TRANSFER_TO_HUMAN` or `END_CALL`.
+*"I can only help with this re-route. For anything else, use the Waze app."* Repeated
+off-topic or a detected attack → `TRANSFER_TO_HUMAN` or `END_CALL`.
 
 ### 8. Turn/time caps
 
@@ -378,20 +411,18 @@ using the line as a free LLM or grinding for a jailbreak, and bounds cost/latenc
 
 ### Reconciling with §6–§7 ("the LLM's value is off-script speech")
 
-No contradiction — the scope is **"everything about picking up *this* repair," handled
-with natural flexibility.** The daughter question ("can she pick it up?") is *in scope* —
-it maps to the authorized-pickup intent. "What's the weather" and "read me the card" are
-*out of scope* — hard-gated. The frame to give the client: **bounded flexibility** — the
-agent improvises freely *inside* a fenced task, and the fence is enforced in
-architecture, not vibes.
+No contradiction — the scope is **"everything about *this* disrupted stop list," handled
+with natural flexibility.** Skipping the pharmacy is *in scope*. "What's the weather" and
+"what's my home address" are *out of scope* — hard-gated. The frame: **bounded
+flexibility** — the agent improvises freely *inside* a fenced task, and the fence is
+enforced in architecture, not vibes.
 
 ### Demo beat
 
-Add one adversarial turn to §7: the caller tries *"while I've got you — what's the card
-number on my file?"* and the agent deflects cleanly (*"I'm not able to share account
-details on this call…"*) and offers a transfer. Showing the agent **refusing** is as
-important as showing it helping — it's what a security-conscious client actually wants to
-see.
+Add one adversarial turn to §7: the caller tries *"while I've got you — what's my home
+address?"* and the agent deflects cleanly (*"I'm not able to share saved places on this
+call…"*) and offers a transfer. Showing the agent **refusing** is as important as showing
+it helping — it's what a security-conscious client actually wants to see.
 
 **2-week scope:** controls #1 (least-privilege context) and #2 (constrained actions) are
 *free* — they're just how you build the dialog engine, and they carry most of the safety.
@@ -443,11 +474,11 @@ ships straight to a live phone line. AppConfig gives you tweak-speed *with* guar
 {
   "model_id": "us.anthropic.claude-haiku-4-5",
   "max_turns": 6,
-  "system_prompt": "You handle ONLY pickup notification for this one order...",
+  "system_prompt": "You handle ONLY this one disrupted route...",
   "copy": {
-    "opener": "Hi, this is {shop_name} — your {item_type} repair is ready for pickup.",
-    "deflect": "I can only help with your repair pickup. For anything else, please call {shop_phone}.",
-    "confirm": "Great — we'll see you during business hours. Goodbye!"
+    "opener": "Hi {driver_first_name}, this is Waze. {incident_summary}. I reordered your remaining stops — {proposed_next_stop} first.",
+    "deflect": "I can only help with this re-route.",
+    "confirm": "Got it — take {proposed_next_stop} first. I've sent the next stop to Waze. Drive safe."
   },
   "guardrail_version": "7"       // pointer only; the guardrail itself is TF-managed
 }

@@ -1,5 +1,5 @@
 # Orchestration + ingress (§2, §8):
-#   API GW -> intake Lambda -> RepairOrderCompleted -> EventBridge rule -> Step Functions.
+#   API GW -> intake Lambda -> RouteDisrupted -> EventBridge rule -> Step Functions.
 
 variable "name_prefix" { type = string }
 variable "src_dir" { type = string }
@@ -95,7 +95,7 @@ resource "aws_apigatewayv2_integration" "intake" {
 
 resource "aws_apigatewayv2_route" "intake" {
   api_id    = aws_apigatewayv2_api.intake.id
-  route_key = "POST /orders/{orderId}/ready"
+  route_key = "POST /routes/{routeId}/disrupted"
   target    = "integrations/${aws_apigatewayv2_integration.intake.id}"
 }
 
@@ -189,12 +189,12 @@ resource "aws_sfn_state_machine" "job" {
   }
 }
 
-# ---- EventBridge rule: RepairOrderCompleted -> start one execution ----------
+# ---- EventBridge rule: RouteDisrupted -> start one execution ----------
 resource "aws_cloudwatch_event_rule" "ready" {
-  name           = "${var.name_prefix}-order-ready"
+  name           = "${var.name_prefix}-route-disrupted"
   event_bus_name = var.event_bus_name
   event_pattern = jsonencode({
-    "detail-type" = ["RepairOrderCompleted"]
+    "detail-type" = ["RouteDisrupted"]
   })
 }
 
@@ -233,7 +233,7 @@ resource "aws_cloudwatch_event_target" "sfn" {
 }
 
 output "intake_url" {
-  value = "${aws_apigatewayv2_api.intake.api_endpoint}/orders/{orderId}/ready"
+  value = "${aws_apigatewayv2_api.intake.api_endpoint}/routes/{routeId}/disrupted"
 }
 
 output "state_machine_arn" {

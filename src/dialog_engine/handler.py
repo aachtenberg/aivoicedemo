@@ -24,8 +24,8 @@ except Exception:  # no boto3 / no region in local dev
 
 # --- §9 #6: output validation is a SECURITY control -> stays in code, never in config ---
 ALLOWED_ACTIONS = {
-    "CONTINUE", "COLLECT_DTMF", "CONFIRM_PICKUP", "REQUEST_RESCHEDULE",
-    "MARK_DO_NOT_CALL", "TRANSFER_TO_HUMAN", "END_CALL",
+    "CONTINUE", "COLLECT_DTMF", "ACCEPT_REROUTE", "KEEP_CURRENT_ROUTE",
+    "SKIP_STOP", "MARK_DO_NOT_CALL", "TRANSFER_TO_HUMAN", "END_CALL",
 }
 _CARD = re.compile(r"\b(?:\d[ -]?){13,16}\b")
 
@@ -60,14 +60,19 @@ _DEFAULT_CONFIG = {
     "model_id": os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0"),
     "max_turns": 6,
     "system_prompt": (
-        "You handle ONLY the pickup notification for this one repair order at {shop_name}. "
-        "Confirm the {item_type} is ready and capture the customer's intent. Never disclose "
-        "account, payment, or address details. For anything unrelated, deflect or transfer."
+        "You handle ONLY this one disrupted route for {driver_first_name}. An incident "
+        "({incident_summary}) invalidates the old stop order. Tell them the proposed order "
+        "({remaining_stops}), capture accept / keep-the-old-order / skip-a-stop, and never "
+        "disclose home, work, school street addresses, or coordinates. For anything unrelated, "
+        "deflect or transfer."
     ),
     "copy": {
-        "opener": "Hi, this is {shop_name} — your {item_type} repair is ready for pickup.",
-        "deflect": "I can only help with your repair pickup.",
-        "confirm": "Great — we'll see you during business hours. Goodbye!",
+        "opener": (
+            "Hi {driver_first_name}, this is Waze. {incident_summary}. I reordered your "
+            "remaining stops — {proposed_next_stop} first. Press 1 to take it, or stay on the line."
+        ),
+        "deflect": "I can only help with this re-route.",
+        "confirm": "Got it — take {proposed_next_stop} first. I've sent the next stop to Waze. Drive safe.",
     },
 }
 
@@ -79,16 +84,27 @@ class _SafeDict(dict):
 
 
 # --- §9 #1: least-privilege context — a PROJECTION, sensitive fields never fetched ---
-_ALLOWED_FIELDS = "customer_first_name, item_type, ready_status, pickup_hours, shop_name"
+# Stop *names* only. Home/work/school street addresses and lat/long are NEVER loaded,
+# so no prompt trick can extract a coordinate that was never in the window.
+_ALLOWED_FIELDS = (
+    "driver_first_name, route_name, incident_summary, delay_minutes, "
+    "current_next_stop, proposed_next_stop, remaining_stops, proposed_eta"
+)
 _STUB_CONTEXT = {
-    "customer_first_name": "Sam", "item_type": "watch", "shop_name": "The Shop",
-    "ready_status": "READY", "pickup_hours": "9am-5pm",
+    "driver_first_name": "Sam",
+    "route_name": "afternoon errands",
+    "incident_summary": "a crash closed Lincoln Avenue",
+    "delay_minutes": "18",
+    "current_next_stop": "Lincoln Pharmacy",
+    "proposed_next_stop": "Oak Street school pickup",
+    "remaining_stops": "school pickup, then the pharmacy via 4th Street, then home",
+    "proposed_eta": "3:40 this afternoon",
 }
 
 
 def load_context(job_id: str) -> dict:
-    # card_on_file / full_address / balance / other_orders are NEVER in the projection,
-    # so no prompt trick can extract what was never loaded.
+    # home/work/school street addresses, coordinates, and other routes are NEVER in
+    # the projection, so no prompt trick can extract what was never loaded.
     if not _ddb or not job_id:
         return _STUB_CONTEXT
     try:
@@ -106,7 +122,7 @@ def load_context(job_id: str) -> dict:
 TOOL = {
     "toolSpec": {
         "name": "decide_turn",
-        "description": "Choose the next action for the pickup-notification call.",
+        "description": "Choose the next action for the mid-trip re-route confirmation call.",
         "inputSchema": {"json": {
             "type": "object",
             "properties": {
@@ -124,8 +140,8 @@ def _run_model(cfg: dict, ctx: dict, utterance: str):
     """Single constrained Converse call. Returns (unvalidated {say, action}, meta)."""
     meta = {"guardrail_blocked": 0, "converse_failed": 0, "in_tokens": 0, "out_tokens": 0}
     if not _bedrock:
-        opener = cfg.get("copy", {}).get("opener", "Your item is ready for pickup.")
-        return {"say": opener.format_map(_SafeDict(ctx)), "action": "CONFIRM_PICKUP"}, meta
+        opener = cfg.get("copy", {}).get("opener", "I reordered your remaining stops.")
+        return {"say": opener.format_map(_SafeDict(ctx)), "action": "ACCEPT_REROUTE"}, meta
 
     system_text = cfg["system_prompt"].format_map(_SafeDict(ctx))
     try:
@@ -135,7 +151,7 @@ def _run_model(cfg: dict, ctx: dict, utterance: str):
             # §9 #5: caller speech is UNTRUSTED — wrapped in guardContent, kept in the
             # user turn as data, never concatenated into instructions.
             messages=[{"role": "user", "content": [
-                {"guardContent": {"text": {"text": utterance or "(the customer just answered)"}}},
+                {"guardContent": {"text": {"text": utterance or "(the driver just answered)"}}},
             ]}],
             # §9 #2: forced tool — the only legal output shape.
             toolConfig={"tools": [TOOL], "toolChoice": {"tool": {"name": "decide_turn"}}},
@@ -150,7 +166,7 @@ def _run_model(cfg: dict, ctx: dict, utterance: str):
     except Exception as e:  # e.g. model access not yet enabled — log & fall back
         print(json.dumps({"level": "error", "msg": "converse_failed", "error": str(e)}))
         meta["converse_failed"] = 1
-        return {"say": cfg.get("copy", {}).get("deflect", "I can only help with your pickup."),
+        return {"say": cfg.get("copy", {}).get("deflect", "I can only help with this re-route."),
                 "action": "TRANSFER_TO_HUMAN"}, meta
 
     usage = resp.get("usage", {})
@@ -161,7 +177,7 @@ def _run_model(cfg: dict, ctx: dict, utterance: str):
         print(json.dumps({"level": "warn", "msg": "guardrail_intervened",
                           "trace": resp.get("trace", {}).get("guardrail")}, default=str))
         meta["guardrail_blocked"] = 1
-        return {"say": cfg.get("copy", {}).get("deflect", "I can only help with your pickup."),
+        return {"say": cfg.get("copy", {}).get("deflect", "I can only help with this re-route."),
                 "action": "TRANSFER_TO_HUMAN"}, meta
 
     for block in resp.get("output", {}).get("message", {}).get("content", []):
@@ -217,5 +233,12 @@ def lambda_handler(event, _context):
     ctx = load_context(job_id)
     turn, meta = _run_model(cfg, ctx, utterance)
     final = validate(turn)  # §9 #6 backstop
+    if final.get("action") in {"ACCEPT_REROUTE", "SKIP_STOP"}:
+        # Deep Link is a code-plane handoff, never loaded into the model context.
+        final = dict(final)
+        final["nextStopWazeLink"] = os.environ.get(
+            "NEXT_STOP_WAZE_LINK",
+            "https://waze.com/ul?ll=40.758895,-73.985131&navigate=yes&utm_source=waze-voice-demo",
+        )
     _emit_metrics(final.get("action", "UNKNOWN"), meta)
     return final

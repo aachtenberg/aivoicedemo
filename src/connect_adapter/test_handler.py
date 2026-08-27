@@ -25,10 +25,10 @@ def test_continue_keeps_listening(monkeypatch):
 
 
 def test_terminal_closes_and_flags_action(monkeypatch):
-    _patch_dialog(monkeypatch, "CONFIRM_PICKUP", "see you then")
-    out = handler.lambda_handler(_event("yes this afternoon"), None)
+    _patch_dialog(monkeypatch, "ACCEPT_REROUTE", "take the school pickup first")
+    out = handler.lambda_handler(_event("yes take the new order"), None)
     assert out["sessionState"]["dialogAction"]["type"] == "Close"
-    assert out["sessionState"]["sessionAttributes"]["finalAction"] == "CONFIRM_PICKUP"
+    assert out["sessionState"]["sessionAttributes"]["finalAction"] == "ACCEPT_REROUTE"
     assert out["sessionState"]["sessionAttributes"]["jobId"] == "job-1"
 
 

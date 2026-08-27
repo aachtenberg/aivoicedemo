@@ -28,6 +28,6 @@ def lambda_handler(event, _context):
 
 def _invoke_dialog(payload) -> dict:
     if not _lambda:
-        return {"say": "Your item is ready for pickup.", "action": "END_CALL"}
+        return {"say": "I reordered your remaining stops.", "action": "END_CALL"}
     r = _lambda.invoke(FunctionName=os.environ["DIALOG_FN"], Payload=json.dumps(payload).encode())
     return json.loads(r["Payload"].read())

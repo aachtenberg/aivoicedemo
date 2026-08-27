@@ -1,5 +1,5 @@
 output "intake_url" {
-  description = "POST /orders/{orderId}/ready to trigger the demo."
+  description = "POST /routes/{routeId}/disrupted to trigger the demo."
   value       = module.orchestrator.intake_url
 }
 

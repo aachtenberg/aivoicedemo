@@ -61,7 +61,7 @@ TALK_ID="$(lex list-intents --bot-id "$BOT_ID" --bot-version DRAFT --locale-id "
 if [[ "$TALK_ID" == "None" || -z "$TALK_ID" ]]; then
   lex create-intent --bot-id "$BOT_ID" --bot-version DRAFT --locale-id "$LOCALE" \
     --intent-name Talk \
-    --sample-utterances '[{"utterance":"hello"},{"utterance":"yes"},{"utterance":"okay"},{"utterance":"pickup"}]' \
+    --sample-utterances '[{"utterance":"hello"},{"utterance":"yes"},{"utterance":"okay"},{"utterance":"reroute"}]' \
     --fulfillment-code-hook enabled=true >/dev/null
 fi
 

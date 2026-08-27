@@ -1,6 +1,6 @@
 # Root module — wires the pieces. See ARCHITECTURE.md for the why of each.
 #
-# Flow:  intake(API GW) -> RepairOrderCompleted(EventBridge) -> Step Functions job
+# Flow:  intake(API GW) -> RouteDisrupted(EventBridge) -> Step Functions job
 #        -> DialogTurn(Bedrock+Guardrail) <- behaviour from AppConfig
 #        -> outcome in DynamoDB + CallCompleted event.  Voice provider is swappable.
 

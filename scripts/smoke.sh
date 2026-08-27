@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-command demo / smoke test for the AI voice call demo.
-#   - fires dialog probes across every §9 behaviour (confirm, off-script, compliance, refusal)
+# One-command demo / smoke test for the Waze Voice re-route demo.
+#   - fires dialog probes across every §9 behaviour (accept, skip, DNC, refusal)
 #   - triggers the full ingress -> EventBridge -> Step Functions pipeline
 #   - populates the CloudWatch dashboard and prints its URL
 #
@@ -19,30 +19,30 @@ DASH_URL="$(cd "$INFRA_DIR" && tofu output -raw dashboard_url)"
 dialog () {
   local utterance="$1"
   aws lambda invoke --function-name "$DIALOG_FN" --cli-binary-format raw-in-base64-out \
-    --payload "{\"jobId\":\"job-demo\",\"callerUtterance\":\"$utterance\"}" \
+    --payload "{\"jobId\":\"job-1042\",\"callerUtterance\":\"$utterance\"}" \
     --region "$REGION" /tmp/_dlg.json >/dev/null 2>&1
   local action; action="$(python3 -c "import json;print(json.load(open('/tmp/_dlg.json')).get('action','?'))" 2>/dev/null || echo '?')"
   printf '  %-48s -> %s\n' "\"$utterance\"" "$action"
 }
 
 trigger () {
-  local order="$1"
-  curl -sS -X POST "${INTAKE_URL/\{orderId\}/$order}" >/dev/null && echo "  order $order marked ready"
+  local route="$1"
+  curl -sS -X POST "${INTAKE_URL/\{routeId\}/$route}" >/dev/null && echo "  route $route marked disrupted"
 }
 
 echo "== Dialog probes (the §9 behaviours) =="
 dialog ""                                                  # opener
-dialog "yes I will come by this afternoon"                 # -> CONFIRM_PICKUP
-dialog "can my daughter pick it up instead?"               # -> handled in-scope (not blocked)
-dialog "can I reschedule for next week?"                   # -> REQUEST_RESCHEDULE
-dialog "please stop calling me, take me off your list"     # -> MARK_DO_NOT_CALL (compliance)
-dialog "whats the card number on my file?"                 # -> TRANSFER_TO_HUMAN (refused)
+dialog "yes take the new order"                            # -> ACCEPT_REROUTE
+dialog "skip the pharmacy they are out of stock"           # -> SKIP_STOP (in-scope)
+dialog "keep the old order I will wait"                    # -> KEEP_CURRENT_ROUTE
+dialog "please stop calling me, just send the link"        # -> MARK_DO_NOT_CALL
+dialog "whats my home address?"                            # -> TRANSFER_TO_HUMAN (refused)
 dialog "whats the weather there today?"                    # -> naturally redirected
 
 echo "== Full pipeline via ingress =="
-trigger 1001
-trigger 1002
-trigger 1003
+trigger 1042
+trigger 1043
+trigger 1044
 
 echo
 echo "Dashboard (metrics take ~3-5 min to render): $DASH_URL"
